@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Descargador Masivo - Python Backend</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .token-input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        .btn {
+            background: #4285f4;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .progress-container {
+            margin: 20px 0;
+            display: none;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #4CAF50;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .status.downloading { background: #e3f2fd; }
+        .status.completed { background: #e8f5e8; }
+        .status.error { background: #ffebee; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Descargador Masivo - Python Backend</h1>
+        <p>Conecta con tu Google Sheets para descargar archivos masivamente</p>
+        
+        <div>
+            <h3>🔑 Ingresa tu Token</h3>
+            <input type="text" id="tokenInput" class="token-input" 
+                   placeholder="Pega aquí el token generado en Google Sheets">
+            <button id="startBtn" class="btn" onclick="startDownload()">Iniciar Descarga</button>
+        </div>
+        
+        <div id="progressContainer" class="progress-container">
+            <h3>📊 Progreso de Descarga</h3>
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill"></div>
+            </div>
+            <div id="statusText" class="status"></div>
+            <button id="downloadBtn" class="btn" style="display: none;" onclick="downloadZip()">
+                📥 Descargar ZIP
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let currentDownloadId = null;
+        let statusInterval = null;
+
+        function startDownload() {
+            const token = document.getElementById('tokenInput').value.trim();
+            if (!token) {
+                alert('Por favor ingresa un token válido');
+                return;
+            }
+
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('progressContainer').style.display = 'block';
+
+            fetch('/start-download', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token })
+            })
+            .then(response => response.json())
+            .then(data => {
+                currentDownloadId = data.download_id;
+                startStatusPolling();
+            })
+            .catch(error => {
+                alert('Error iniciando descarga: ' + error);
+                document.getElementById('startBtn').disabled = false;
+            });
+        }
+
+        function startStatusPolling() {
+            statusInterval = setInterval(() => {
+                fetch(`/status/${currentDownloadId}`)
+                    .then(response => response.json())
+                    .then(status => {
+                        updateProgress(status);
+                        
+                        if (status.status === 'completed' || status.status === 'error') {
+                            clearInterval(statusInterval);
+                            document.getElementById('startBtn').disabled = false;
+                        }
+                    });
+            }, 1000);
+        }
+
+        function updateProgress(status) {
+            const progressFill = document.getElementById('progressFill');
+            const statusText = document.getElementById('statusText');
+            const downloadBtn = document.getElementById('downloadBtn');
+
+            progressFill.style.width = status.progress + '%';
+            
+            let statusHtml = '';
+            if (status.status === 'downloading') {
+                statusHtml = `
+                    <div class="status downloading">
+                        <strong>Descargando:</strong> ${status.current_file}<br>
+                        <strong>Progreso:</strong> ${status.downloaded}/${status.total_files} archivos
+                    </div>
+                `;
+            } else if (status.status === 'completed') {
+                statusHtml = `
+                    <div class="status completed">
+                        <strong>✅ Descarga completada!</strong><br>
+                        ${status.downloaded_files} archivos descargados exitosamente
+                    </div>
+                `;
+                downloadBtn.style.display = 'block';
+            } else if (status.status === 'error') {
+                statusHtml = `
+                    <div class="status error">
+                        <strong>❌ Error:</strong> ${status.error}
+                    </div>
+                `;
+            }
+            
+            statusText.innerHTML = statusHtml;
+        }
+
+        function downloadZip() {
+            if (currentDownloadId) {
+                window.open(`/download/${currentDownloadId}`, '_blank');
+            }
+        }
+    </script>
+</body>
+</html>
